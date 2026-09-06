@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "bb",
-    "slug": "bb-app",
+    "slug": "bb-android-application",
     "version": "0.39.0",
     "scheme": "bb",
     "orientation": "default",
