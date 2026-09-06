@@ -98,7 +98,8 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "./config-plugins/withJcenterFix.js"
     ],
     "experiments": {
       "typedRoutes": true
