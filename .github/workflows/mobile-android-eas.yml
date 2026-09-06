@@ -1,0 +1,177 @@
+# Build the bb mobile app for Android on EAS and publish the APK as a workflow
+# artifact. Mirrors mobile-ios-eas.yml, but Android needs no Apple / App Store
+# Connect credentials: EAS auto-generates and stores an Android keystore on the
+# first non-interactive build. EAS builds on its own Linux workers, so this only
+# needs an Ubuntu runner that starts the build, waits for it, and downloads the
+# resulting APK.
+#
+# Setup before the first run (see apps/mobile/ANDROID-APK.md):
+#   - Repo secret   EXPO_TOKEN      a robot/personal access token from expo.dev
+#   - Repo variable EAS_PROJECT_ID  your own EAS project id (`eas init` once, or
+#                                   create a project at expo.dev and copy its id)
+#   - Repo variable EXPO_OWNER      optional; defaults to the token's account
+name: Mobile Android (EAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile from apps/mobile/eas.json. `preview` emits an installable APK.
+        required: true
+        type: choice
+        default: preview
+        options:
+          - preview
+          - production
+          - development
+      version:
+        description: Marketing version for app.json (X.Y.Z; a -prerelease suffix is dropped). Empty keeps the committed value.
+        required: false
+        type: string
+        default: ""
+  push:
+    tags:
+      - "android-v*"
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: 9.15.0
+  NODE_VERSION: 22.19.0
+
+jobs:
+  build:
+    name: Build bb Android on EAS (${{ inputs.profile || 'preview' }})
+    runs-on: ubuntu-latest
+    # The job waits for the EAS build. On the free EAS tier the build queue
+    # alone can take 30+ minutes.
+    timeout-minutes: 150
+    # One EAS Android build at a time so concurrent runs do not race on the
+    # remote version code that `appVersionSource: remote` manages.
+    concurrency:
+      group: mobile-android-eas
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up workspace (pnpm + Node + deps)
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: mobile-android-eas
+          turbo-cache: "false"
+
+      - name: Require the Expo token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${EXPO_TOKEN:-}" ]]; then
+            echo "::error::Android EAS builds need the EXPO_TOKEN secret. See apps/mobile/ANDROID-APK.md."
+            exit 1
+          fi
+
+      - name: Override the EAS project (optional)
+        if: ${{ vars.EAS_PROJECT_ID != '' || vars.EXPO_OWNER != '' }}
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EXPO_OWNER: ${{ vars.EXPO_OWNER }}
+        working-directory: apps/mobile
+        # app.json already carries this repo's EAS projectId. Set the repo
+        # variables EAS_PROJECT_ID / EXPO_OWNER only to build a fork under a
+        # different Expo project or account without editing app.json.
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const config = JSON.parse(readFileSync("app.json", "utf8"));
+            const projectId = process.env.EAS_PROJECT_ID;
+            const owner = process.env.EXPO_OWNER;
+            if (projectId) {
+              config.expo.extra = config.expo.extra ?? {};
+              config.expo.extra.eas = config.expo.extra.eas ?? {};
+              config.expo.extra.eas.projectId = projectId;
+            }
+            if (owner) config.expo.owner = owner;
+            writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          '
+          echo "Applied EAS project override."
+
+      - name: Apply the marketing version
+        if: ${{ inputs.version != '' }}
+        env:
+          MOBILE_VERSION: ${{ inputs.version }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          MOBILE_VERSION="${MOBILE_VERSION%%-*}"
+          if [[ ! "$MOBILE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Marketing version must be numeric (X.Y.Z), got '${MOBILE_VERSION}'."
+            exit 1
+          fi
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const config = JSON.parse(readFileSync("app.json", "utf8"));
+            config.expo.version = process.argv[1];
+            writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          ' "$MOBILE_VERSION"
+          echo "Applied mobile version ${MOBILE_VERSION}."
+
+      - name: Build the APK on EAS and wait for the result
+        id: eas_build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROFILE: ${{ inputs.profile || 'preview' }}
+        working-directory: apps/mobile
+        # EAS builds on its own workers for ~15-25 minutes. --json puts the
+        # finished build records on stdout and the progress log on stderr; the
+        # record carries the downloadable artifact URL. The command exits
+        # non-zero when the build fails, so a red EAS build makes this job red.
+        run: |
+          set -euo pipefail
+          pnpm exec eas build \
+            --platform android \
+            --profile "$EAS_PROFILE" \
+            --non-interactive \
+            --wait \
+            --json 2> >(tee eas-build.log >&2) > eas-build.json
+          {
+            echo "## EAS Android build"
+            echo
+            grep -Eo 'https://expo\.dev/[^ ]+' eas-build.log | sort -u | sed 's/^/- /' || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync } from "node:fs";
+            const builds = JSON.parse(readFileSync("eas-build.json", "utf8"));
+            const build = Array.isArray(builds) ? builds[0] : builds;
+            const artifacts = build?.artifacts ?? {};
+            const url = artifacts.applicationArchiveUrl ?? artifacts.buildUrl;
+            if (typeof url !== "string") {
+              throw new Error(`eas build --json returned no artifact URL: ${JSON.stringify(artifacts)}`);
+            }
+            appendFileSync(process.env.GITHUB_OUTPUT, `apk_url=${url}\n`);
+            appendFileSync(process.env.GITHUB_OUTPUT, `app_version=${build?.appVersion ?? "unknown"}\n`);
+            console.log(`EAS built ${build?.appVersion ?? "?"}: ${url}`);
+          '
+
+      - name: Download the APK
+        env:
+          APK_URL: ${{ steps.eas_build.outputs.apk_url }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "$APK_URL" -o bb-android.apk
+          ls -la bb-android.apk
+          file bb-android.apk || true
+
+      - name: Upload the APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bb-android-apk-${{ steps.eas_build.outputs.app_version }}
+          path: apps/mobile/bb-android.apk
+          if-no-files-found: error

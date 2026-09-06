@@ -2,7 +2,6 @@
   "expo": {
     "name": "bb",
     "slug": "bb-app",
-    "owner": "bb-team",
     "version": "0.39.0",
     "scheme": "bb",
     "orientation": "default",
@@ -106,7 +105,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "3dca8cca-f48a-4c3a-ba3d-3af40e58a588"
+        "projectId": "a2ec690a-3cef-4cbb-bb2f-3aa828f27de1"
       }
     }
   }
