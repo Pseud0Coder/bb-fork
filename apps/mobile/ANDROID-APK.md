@@ -33,6 +33,7 @@ After you push this repo to your own GitHub repo, add:
 | Kind | Name | Value |
 | --- | --- | --- |
 | **Secret** | `EXPO_TOKEN` | the Expo access token from step 1 (**required**) |
+| **Secret** | `GOOGLE_SERVICES_JSON` | *optional* — the contents of your `google-services.json` (needed for **push notifications**, see §5) |
 | **Variable** | `EAS_PROJECT_ID` | *optional* — override the committed project id (for a fork) |
 | **Variable** | `EXPO_OWNER` | *optional* — Expo account/username, only if EAS needs it disambiguated |
 
@@ -80,6 +81,42 @@ Revoke a device any time in the getbb.app dashboard under **Machines**.
 > HTTPS URL (`tailscale serve --bg --https=443 http://127.0.0.1:38886`) — private
 > and WireGuard-encrypted — or, on trusted Wi-Fi only, `http://<lan-ip>:38886`
 > with `BB_SERVER_BIND_HOST=0.0.0.0` (unencrypted).
+
+## 5. Push notifications (optional, needs Firebase)
+
+Toggling on notifications (in the app: **Settings → Notifications**) makes the
+phone fetch an Expo push token. On Android that token comes from **Firebase
+Cloud Messaging (FCM)**, so the APK must be built with a Firebase config. A
+build without it registers the toggle but the token fetch fails with a
+Firebase/"Google Services" error (e.g. `FirebaseApp is not initialized` or
+`No Firebase App '[DEFAULT]'`).
+
+One-time setup:
+
+1. **Firebase project:** at <https://console.firebase.google.com>, create (or
+   reuse) a project and **add an Android app** with the package name
+   `app.getbb.mobile` (the `android.package` in `apps/mobile/app.json`).
+2. **Config file:** download the app's **`google-services.json`** and add its
+   **contents** as the repo secret `GOOGLE_SERVICES_JSON` (Settings → Secrets
+   and variables → Actions). The workflow writes it to `apps/mobile/` before
+   the EAS build, and Expo's build copies it into the app. (Committing the file
+   to the repo instead works too — it holds a client identifier, not a secret.)
+3. **FCM v1 credentials on Expo:** in the Firebase console go to **Project
+   settings → Service accounts → Generate new private key** (this service
+   account needs the *Firebase Cloud Messaging API Admin* role). Upload that
+   JSON to the EAS project with `pnpm exec eas credentials -p android`
+   (choose *push notifications*, FCM **V1**) or on the expo.dev project page.
+   Without it the phone gets a token but Expo's servers cannot deliver the
+   push.
+4. **Rebuild** the APK (§3) — existing installs update in place.
+
+The bb server side needs nothing extra: the `push-notifications` plugin ships
+built-in and running (`bb push-notifications status`). Test end-to-end with
+`bb push-notifications test`.
+
+> Push registration requires a **secure** profile: bb connect (getbb.app) or
+> any HTTPS direct URL. Plain-HTTP direct profiles on non-loopback hosts show
+> "Push needs HTTPS or bb connect" by design.
 
 ## Caveats
 

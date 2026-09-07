@@ -121,6 +121,16 @@ jobs:
           ' "$MOBILE_VERSION"
           echo "Applied mobile version ${MOBILE_VERSION}."
 
+      - name: Write the Firebase config (optional)
+        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json
+          echo "Wrote google-services.json (${#GOOGLE_SERVICES_JSON} bytes)."
+
       - name: Build the APK on EAS and wait for the result
         id: eas_build
         env:

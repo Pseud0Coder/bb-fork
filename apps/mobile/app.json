@@ -2,7 +2,7 @@
   "expo": {
     "name": "bb",
     "slug": "bb-android-application",
-    "version": "0.39.0",
+    "version": "0.40.0",
     "scheme": "bb",
     "orientation": "default",
     "icon": "./assets/icon.png",
