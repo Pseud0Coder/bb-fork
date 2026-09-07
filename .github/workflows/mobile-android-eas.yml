@@ -39,6 +39,9 @@ permissions:
 env:
   PNPM_VERSION: 9.15.0
   NODE_VERSION: 22.19.0
+  # `secrets` is unavailable in step-level `if:`, so expose the optional
+  # Firebase config through env and test that instead (§5 of ANDROID-APK.md).
+  GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
 jobs:
   build:
@@ -122,9 +125,7 @@ jobs:
           echo "Applied mobile version ${MOBILE_VERSION}."
 
       - name: Write the Firebase config (optional)
-        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
         working-directory: apps/mobile
         run: |
           set -euo pipefail
