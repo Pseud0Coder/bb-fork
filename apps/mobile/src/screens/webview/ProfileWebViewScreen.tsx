@@ -23,6 +23,7 @@ import {
 } from "@/lib/shell";
 import { getShellPreferenceStore } from "@/lib/shell/shell-preference-store";
 import { settingsSectionHref } from "@/screens/shell/hrefs";
+import { ServerSwitcher } from "@/screens/shell/ServerSwitcher";
 import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
@@ -295,6 +296,7 @@ export function ProfileWebViewScreen() {
         }}
         onContentProcessDidTerminate={retry}
       />
+      <ServerSwitcher />
     </View>
   );
 }
