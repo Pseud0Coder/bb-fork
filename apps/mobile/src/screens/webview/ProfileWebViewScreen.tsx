@@ -244,7 +244,11 @@ export function ProfileWebViewScreen() {
   if (profile === null || sourceUrl === null || handshake === null) return null;
 
   return (
-    <View className="flex-1 bg-background" testID="shell-webview">
+    <View
+      className="flex-1 bg-background"
+      testID="shell-webview"
+      collapsable={false}
+    >
       <WebView
         key={`${profile.id}#${sourceUrl}#${reloadKey}`}
         ref={webViewRef}
@@ -295,6 +299,7 @@ export function ProfileWebViewScreen() {
             setLoad({ kind: "http-error", status: statusCode });
         }}
         onContentProcessDidTerminate={retry}
+        onRenderProcessGone={retry}
       />
       <ServerPanel />
     </View>

@@ -127,10 +127,21 @@ jobs:
       - name: Write the Firebase config (optional)
         if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
         working-directory: apps/mobile
+        # Writing the file alone is not enough: without expo.android.googleServicesFile
+        # in app.json, Expo's prebuild never copies it into the native project, so
+        # Firebase silently never initializes (see ANDROID-APK.md §5).
         run: |
           set -euo pipefail
           printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json
           echo "Wrote google-services.json (${#GOOGLE_SERVICES_JSON} bytes)."
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const config = JSON.parse(readFileSync("app.json", "utf8"));
+            config.expo.android = config.expo.android ?? {};
+            config.expo.android.googleServicesFile = "./google-services.json";
+            writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          '
+          echo "Set expo.android.googleServicesFile in app.json."
 
       - name: Build the APK on EAS and wait for the result
         id: eas_build

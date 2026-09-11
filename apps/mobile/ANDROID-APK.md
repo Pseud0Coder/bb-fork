@@ -99,8 +99,13 @@ One-time setup:
 2. **Config file:** download the app's **`google-services.json`** and add its
    **contents** as the repo secret `GOOGLE_SERVICES_JSON` (Settings → Secrets
    and variables → Actions). The workflow writes it to `apps/mobile/` before
-   the EAS build, and Expo's build copies it into the app. (Committing the file
-   to the repo instead works too — it holds a client identifier, not a secret.)
+   the EAS build and points `expo.android.googleServicesFile` at it in
+   `app.json`, so Expo's prebuild copies it into the native project — both
+   steps are required; the file alone is not read by Expo. (Committing the
+   file to the repo instead of using the secret also works — it holds a
+   client identifier, not a secret — but it is gitignored, so add it with
+   `git add -f` and set `expo.android.googleServicesFile` in `app.json`
+   yourself.)
 3. **FCM v1 credentials on Expo:** in the Firebase console go to **Project
    settings → Service accounts → Generate new private key** (this service
    account needs the *Firebase Cloud Messaging API Admin* role). Upload that
